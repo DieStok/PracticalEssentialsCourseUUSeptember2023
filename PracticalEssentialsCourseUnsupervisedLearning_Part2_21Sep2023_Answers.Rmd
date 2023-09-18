@@ -1,0 +1,1075 @@
+---
+title: "PracticalEssentialsCourseUnsupervisedLearning_Part2_21Sep2023_Answers"
+author: "Dieter Stoker"
+date: "2023-09-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Unsupervised learning day 2
+
+#############################################
+#
+#       Setup 
+#
+#############################################
+
+
+```{r}
+##SETUP CHUNK: INSTALLS AND LOADS NEEDED PACKAGES##
+
+#gives access to biologically oriented R packages from the Bioconductor project (https://bioconductor.org/)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+#this installs pacman: using its p_load function you can load any package you want, and if you don't have it installed it will automatically download it for you.
+if(!require(pacman)) {
+install.packages("pacman"); require(pacman)}
+#load packages we want to use
+p_load(ggplot2, magrittr, plyr, tidyverse, EBImage, stringr, R.matlab, gganimate, png, gifski, knitr, ggdendro, Rtsne, uwot)
+
+#some packages are not on CRAN, so need to be downloaded manually
+source("usefulFunctions.R")
+
+```
+
+Note: this practical uses information from the second lecture on working with high-dimensional data. Leave this part for Thursday! If you are well-versed in R and want to work on, make sure you at least watch the StatQuest video on PCA before proceeding: https://www.youtube.com/watch?v=FgakZw6K1QQ 
+
+
+########################################
+#
+#       Clustering in higher dimensions and PCA
+#
+########################################
+
+We've talked during the lecture about problems in higher dimensions. You can cluster in higher dimensions and then project this high-dimensional data down to 2D for plotting, plotting the clusters as well. We've covered, however, that once the number of dimensions gets large, distance metrics lose their meaning.
+
+Before we move into showing that outright, let's add noisy genes to our data, reduce the dimensions with PCA, and plot the 2D plot. Answer the questions under the code block.
+
+```{r}
+#Here we will set the seed so things are equal, so you can discuss with your neighbours!
+set.seed(424242)
+
+#regenerate data
+
+meanX = c(2,2.5,8,7.3)
+meanY = c(2, 7.9, 2.33, 9)
+sds   = c(0.8, 1.2, 1.124, 0.65)
+nPoints = rep(25, 4)
+clusterIdentity = c(rep("1", 25), rep("2",25), rep("3",25), rep("4",25))
+
+xValues = purrr::pmap(list(nPoints, meanX, sds), rnorm)
+yValues = purrr::pmap(list(nPoints, meanY, sds), rnorm)
+
+dataforClustering = as_tibble(list("Gene 1 Expression" = unlist(xValues),
+                                    "Gene 2 Expression" = unlist(yValues),
+                                   "True Cluster" = as.factor(clusterIdentity)))
+
+
+#plot of original data
+ggplot(data = dataforClustering, aes_string(x = "`Gene 1 Expression`", y = "`Gene 2 Expression`", colour = "`True Cluster`")) + geom_point(size = 3) +
+  theme_bw() + ggtitle("Original data with true clusters")
+
+
+#just the 2D data
+pca2DData = prcomp(dataforClustering %>% select(-"True Cluster"), center = TRUE, scale. = TRUE)
+
+#plot it
+ggbiplot(pca2DData, groups = dataforClustering$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() + ggtitle("PCA on original 2D data")
+
+#add noise to our data
+dataWithNoise = dataforClustering
+dataWithNoise[["Gene 3 Expression"]] = rnorm(nrow(dataWithNoise), 0, 2)
+
+#perform PCA
+pca3DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, scale. = TRUE)
+
+#plot data
+ggbiplot(pca3DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
+  theme_bw() +
+  ggtitle("PCA of data with one noisy gene added")
+
+
+#add another dimension with noise and do this again
+dataWithNoise[["Gene 4 Expression"]] = rnorm(nrow(dataWithNoise), 0, 2)
+
+pca4DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, scale. = TRUE) 
+
+ggbiplot(pca4DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
+  theme_bw() +
+  ggtitle("PCA of data with two noisy genes added")
+
+#Once more because it's cool
+dataWithNoise[["Gene 5 Expression"]] = rnorm(nrow(dataWithNoise), 0, 2)
+
+pca5DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, scale. = TRUE)
+
+ggbiplot(pca5DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
+  theme_bw() +
+  ggtitle("PCA of data with three noisy genes added")
+
+```
+
+
+Q6: What has happened in the first PCA plot, where we 'reduce' dimensions from 2 to 2? What do the arrows mean?
+
+#Answer: the data has been rotated, but is otherwise unperturbed. The arrows are the 2D projections of the original variable axes in the new space. In this case, they just correspond to the x- and y-axis in the original plot.
+
+Q7: What happens to the clusters (as we predefined them) when we add more noise? Why?
+
+#Answer: they become less and less well-defined in the dimension reduction, because more and more of the variance in the data is due to the noisy variables we added. The points start to become more like each other in noisy dimensions rather than in the 2 dimensions with signal that we predefined (the 4 groups in expression in gene 1 and 2).
+
+Q8: in the code block below, run ggscreeplot() on the output of the different PCAs. How many components do you need in each case to get >~ 80% of the variability in the data? You can also use summary(pcadata).
+
+#answer: first one, 2. Second one: 3, fourth one: 3, fifth one: 4
+
+```{r}
+summary(pca2DData)
+summary(pca3DData)
+summary(pca4DData)
+summary(pca5DData)
+
+```
+
+
+
+
+Now, let's run kmeans on the multidimensional data, and then show the groups found in the 2D space. Note that R's k-means function automatically does multiple initialisations and chooses the 'best' clusters (it is smarter than the basic k-means explained in the lectures). We'll use it here. Below is the example for the 2D data. You need to do the same thing, but for the 4D data (with 2 noisy genes added) and 5D data (with 3). 
+
+So:
+-select the columns you need
+-perform k-means
+-plot a ggbiplot where you colour the actual clusters ("True Cluster" column)
+-plot a ggbiplot where you colour the clusters k-means found
+-compare and contrast
+
+Below is the example for the 2D data. You must do it for the 4D and 5D data!
+
+```{r}
+k = 4
+kMeans2D = kmeans(dataforClustering %>% select(-"True Cluster"), centers = k)
+
+
+#(You don't need to do these next two plots yourself, only the ggbiplot calls and performing kmeans)
+#plot 2D plot with actual clusters
+ggplot(dataforClustering %>% mutate(kMeansCluster = as.factor(kMeans2D$cluster)),
+       aes( x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = `True Cluster`)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("Actual clusters")
+
+#plot 2D plot with k-means clusters
+ggplot(dataforClustering %>% mutate(kMeansCluster = as.factor(kMeans2D$cluster)),
+       aes( x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = kMeansCluster)) +
+  geom_point() + 
+  theme_bw() +
+  ggtitle("K-means clusters")
+
+
+#plot PCA plot with actual clusters
+ggbiplot(pca2DData, groups = as.factor(dataforClustering$`True Cluster`), varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() +
+  ggtitle("Actual clusters in PCA projection")
+
+#plot PCA plot with k-means cluster
+ggbiplot(pca2DData, groups = as.factor(kMeans2D$cluster), varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() +
+  ggtitle("K-means clusters in PCA projection")
+
+
+#################################################
+##
+##          UP TO YOU FROM HERE!
+##
+#################################################
+
+
+#functions you need. If you don't understand how to use them, execute ?FUNCTION_NAME in the console, or search online!
+
+columnsToKeep = c("Gene 1 Expression", "Gene 2 Expression", "Gene 3 Expression", "Gene 4 Expression")
+dataWithNoise %>% select(contains(columnsToKeep)) 
+?kmeans()
+
+
+
+####
+##
+## ANSWER
+##
+####
+
+keepUntil = c(4,5)
+listPCAResults = list(`4` = pca4DData, `5` = pca5DData)
+for (i in seq_along(keepUntil)) {
+  
+  columnsToKeep = paste0("Gene ", seq(1,keepUntil[i]), " Expression")
+  dataND        = dataWithNoise %>% select(contains(columnsToKeep)) 
+  kMeansND      = kmeans(dataND, centers = k)
+  
+  
+  #plot PCA plot with actual clusters
+  realClusterPlot = ggbiplot(listPCAResults[[as.character(keepUntil[i])]], groups = as.factor(dataforClustering$`True Cluster`), varname.adjust = 1.1, varname.abbrev = TRUE) +
+    theme_bw() +
+  ggtitle(paste0("Actual clusters PCA ", keepUntil[i], "D data"))
+
+#plot PCA plot with k-means cluster
+  kMeansPlot = ggbiplot(listPCAResults[[as.character(keepUntil[i])]],
+                                  groups = factor(kMeansND$cluster, levels = c(1,2,3,4)), varname.adjust = 1.1, varname.abbrev = TRUE) +
+    theme_bw() +
+  ggtitle(paste0("K-means clusters PCA ", keepUntil[i], "D data"))
+  show(realClusterPlot)
+  show(kMeansPlot)
+  
+}
+
+
+
+
+
+```
+
+Q9: What do you see? Do the clusters still resemble the 'actual clusters' that we put in? Note: the colours are, by necessity, different, because the number a cluster is assigned is arbitrary
+
+#Answer: yes, for these fewm noise dimensions which were added, the clusters are still (almost) exactly the same as we defined them. K-means isn't disturbed by the noise so far.
+
+  
+
+Now let's add more noisy dimensions and see what happens with clustering. We'll take our data from above, and just start adding more and more random noisy genes. Note that, in any normal experiment, you wouldn't know which genes were 'just noise' and which were not. In this scenario, let's assume that we know that these 2 genes uniquely define 4 cell types, and pretend that we are measuring more and more unrelated genes. Will we still find the original clusters? After adding more noise, we'll do PCA and visualise the first 2 components each time. I say 'we', but it's going to be you. So:
+
+-Add 10, 20, 50, 100 and 200 noise dimensions (save each as a different dataframe)
+-Perform pca on each dataframe (use prcomp(data, center = TRUE, scale. = TRUE ))
+-Perform kmeans clustering on each dataframe (use R's kmeans() function), use k = 4
+-Plot the 2 first principal components (use ggbiplot(), like above), once colouring the groups by the predefined signal (Gene 1 and Gene 2), and once colouring them by the clusters that k-means arrives at. Just like above. 
+-Compare and contrast the resultant graphs for increasing noise.
+
+Hints:
+--> Feel free to use a loop, but also feel free not to use loops!
+--> If not using loops, it's fine if you just do 2 or 3 cases (20, 50, 200 noise dimensions)
+--> You can check the code blocks above for the type of thing you need to do here (it uses similar functions and data editing techniques)
+--> If you get stuck, feel free to check the answers.
+
+
+```{r}
+#functions you might want to use/example of adding random noise
+exampleData     = tibble(`Gene 1 Expression` = c(1,2,3),`Gene 2 Expression` = c(4,5,6))
+colsToAdd       = 5
+randData        = purrr::map(rep(nrow(exampleData), colsToAdd), rnorm, 0, 10) 
+newNames        = paste0("Gene ", seq(3,(colsToAdd+2)), " Expression")
+names(randData) = newNames
+newNoiseCols    = dplyr::bind_cols(randData)
+addedNoiseData  = bind_cols(exampleData, newNoiseCols)
+
+#if you want to drop columns:
+noGeneFive      = addedNoiseData %>% select(-contains("Gene 5"))
+
+#remember that the data is in
+dataforClustering
+
+#######################################
+###
+###   UP TO YOU FROM HERE ON OUT!
+###
+#######################################
+
+########
+#Answer#
+########
+
+
+#make some empty lists, and a vector of dimensions to add to loop over
+noiseDimsToAdd  = c(10, 20, 50, 100, 200, 1000)
+dataList        = vector("list", length(noiseDimsToAdd))
+pcaDataList     = vector("list", length(noiseDimsToAdd))
+kMeansList      = vector("list", length(noiseDimsToAdd))
+plotList        = vector("list", length(noiseDimsToAdd))
+for (i in seq_along(noiseDimsToAdd)) {
+  
+  #add random data
+  colsToAdd        = noiseDimsToAdd[i]
+  randData         = purrr::map(rep(nrow(dataforClustering), colsToAdd), rnorm, 0, 10)
+  #randData         = purrr::map(rep(nrow(dataforClustering), colsToAdd),
+  #rnorm, sample(seq(0, 8), 1), sample(seq(0, 5), 1))
+  newNames         = paste0("Gene ", seq(3,(colsToAdd+2)), " Expression")
+  names(randData)  = newNames
+  newNoiseCols     = dplyr::bind_cols(randData)
+  addedNoiseData   = bind_cols(dataforClustering, newNoiseCols)
+  
+  dataList[[i]]    = addedNoiseData
+  
+  #do pca
+  pcaThisData      = prcomp(addedNoiseData %>% select(-contains("True Cluster")),
+                           center = TRUE, scale. = TRUE )
+  
+  pcaDataList[[i]] = pcaThisData
+  
+  #run kmeans
+  kMeansThisData   = kmeans(addedNoiseData %>% select(-contains("True Cluster")), centers = 4)
+  
+  kMeansList[[i]]  = kMeansThisData
+  
+  #make plots
+  plotTrueCluster   = ggbiplot(pcaThisData, groups = as.factor(dataforClustering$`True Cluster`), varname.adjust = 1.1, varname.abbrev = TRUE, var.axes = ifelse(noiseDimsToAdd[i]<100, TRUE, FALSE)) +
+    theme_bw() +
+  ggtitle(paste0("Actual clusters PCA with ", noiseDimsToAdd[i], " noise dimensions"))
+  
+  plotKMeansCluster = ggbiplot(pcaThisData, groups = as.factor(kMeansThisData$cluster), varname.adjust = 1.1, varname.abbrev = TRUE, var.axes = ifelse(noiseDimsToAdd[i]<100, TRUE, FALSE)) +
+    theme_bw() +
+  ggtitle(paste0("K-means clusters PCA with ", noiseDimsToAdd[i], " noise dimensions"))
+  
+  plotList[[i]] = list(trueSignalClusters = plotTrueCluster,
+                       kMeansClusters     = plotKMeansCluster)
+}
+
+
+show(plotList)
+
+```
+
+
+Q10: What do you see as noise increases? Try to focus on a group of points and see how they shift colour when you jump between the 'true' clusters (that is, based on the signal we explicitly put in) and the ones k-means finds.
+
+#Answer: Though it is somewhat hard to see, in the beginning the clusters are still somewhat the same, even though with more dimensions the 2D plot is looking less and less like actual defined clusters. Once we get to 100 or 200 noise dimensions, they are not the same anymore: colours don't only shift in groups, there are actual differences.
+
+Q11: Contrast the PCAs of the high-dimensional space with those we made before when adding only 1 or 2 noise dimensions. Why are the points so much more spread out?
+
+#Answer: in actuality, every point is so noisy that everything is just far apart from each other in the 200D space. With 200 noise values, the signal is tiny compared to the part that random noise adds to the distance calculations. Note also that an extreme value in just one dimension sort of 'lifts' a point out of the middle/average, because it is now very far away from (almost) all other points in that dimension. 
+
+Q12: It might seem contrived that we are straight-up adding noise. Of course that would make clustering perform worse, we are diluting the signal by a factor 100 in the end! However, it is not so far off from reality. What biological experiments can you think up that might have similar problems?
+
+#Answer: any experiment where we measure expression of all/many genes, be it in RNA, at the protein level will have this problem: only a small part of the genes will be involved. Also when we measure cell-wide chromatin states, or many phenotypic characteristics in different growth conditions: there is little signal, and a lot of noise. Clustering works to find some patterns, but it's always a dialogue where you need to see what that structure might correspond to, cluster again, select subsets of the data intelligently (because you know that certain genes, like housekeeping genes, are certainly not involved), etc.
+
+
+
+Take-homes:
+-You understand how K-means works and that it needs multiple initialisations to get the best clustering given a certain k.
+-If you measure too many variables/features then the noise can simply overwhelm the meaningful distances. This is part of the so-called curse of dimensionality.
+-You can read and understand a PCA plot (complete with axes of the original features projected into the PCA space)
+
+
+#########################################################################
+#
+#       Broader dimension reduction part: PCA compared with tSNE and UMAP
+#
+#########################################################################
+
+
+Now let's look into tSNE and UMAP and compare that to PCA as a baseline. For this, we'll use the test images of the MNIST dataset (10.000 28*28 centered images of human handwritten digits, and the corresponding labels for what they are). 
+
+
+```{r}
+load_image_file = function(filename) {
+ ret = list()
+ f = file(filename,'rb')
+ readBin(f,'integer',n=1,size=4,endian='big')
+ ret$n = readBin(f,'integer',n=1,size=4,endian='big')
+ nrow = readBin(f,'integer',n=1,size=4,endian='big')
+ ncol = readBin(f,'integer',n=1,size=4,endian='big')
+ x = readBin(f,'integer',n=ret$n*nrow*ncol,size=1,signed=F)
+ ret$x = matrix(x, ncol=nrow*ncol, byrow=T)
+ close(f)
+ ret
+}
+ 
+load_label_file = function(filename) {
+ f = file(filename,'rb')
+ readBin(f,'integer',n=1,size=4,endian='big')
+ n = readBin(f,'integer',n=1,size=4,endian='big')
+ y = readBin(f,'integer',n=n,size=1,signed=F)
+ close(f)
+ y
+}
+
+
+dataMNIST   = load_image_file("./MNIST/t10k-images.idx3-ubyte")
+labelsMNIST = load_label_file("./MNIST/t10k-labels.idx1-ubyte")
+
+
+```
+
+Q1: Investigate the dataMNIST object. What part of it contains the data, and how is it represented? What is the range of the data?
+
+#Answer: The data is in the "n" part of the list object. It is a matrix where each row is made up of 784 values from 0 to 255. This represents one digit, which we can reconstruct into a 28*28 matrix to actually show the digit in question.
+
+Below, we show the first 10 digits
+
+```{r, fig.height= 3.5, fig.width = 3.5}
+
+
+show_digit = function(arr784, col=gray(12:1/12), ...) {
+ image(matrix(arr784, nrow=28)[,28:1], col=col, ...)
+}
+
+apply(dataMNIST$x[seq(1:10), ], 1, show_digit)
+
+
+```
+Now let's perform a PCA and see whether it separates the 9 digits well. It's up to you to:
+
+-run PCA on this data (without scale and center this time)
+-draw a PCA plot (using ggbiplot, set var.axes to FALSE)
+-colour the points in that plot by the MNISTlabels (be sure to make them a character or factor)
+
+
+```{r}
+
+######
+# ANSWER
+######
+digitsPCA = prcomp(dataMNIST$x)
+
+plotMNISTPCA = ggbiplot(digitsPCA, var.axes = FALSE, alpha = 0.3,
+                                  groups = as.factor(labelsMNIST)) +
+  theme_bw()
+show(plotMNISTPCA)
+
+```
+
+Q2: Does the PCA separate the digits well? What digit is most clearly clustered?
+
+#Answer: I would say that the PCA does not do such a good job separating the digits, it mostly looks like a giant cloud of intermingled points. The group that stands out most seems to be the digit 1.
+
+
+Let's move on to t-SNE. First, watch this StatQuest clip to gain more insight into what t-SNE is doing: https://www.youtube.com/watch?v=NEaUSP4YerM .Use the Rtsne() function on the MNIST data and plot the outcome (with the correct labels). I'm leaving you to it without further instruction, since you've seen plotting code before and it's not so different from plotting the PCA results. You can look here: https://www.rdocumentation.org/packages/Rtsne/versions/0.15 and just use ?Rtsne for help. Be sure to try different perplexities (See here: https://distill.pub/2016/misread-tsne/). You can use ggplot to plot, but R's built-in plot function is also fine.
+
+```{r}
+######
+#Answer
+######
+
+
+#one perplexity
+digitTSNE = Rtsne(dataMNIST$x)
+
+tibbleTSNEData = tibble(data.frame(digitTSNE$Y)) %>%
+  mutate(label = labelsMNIST) %>%
+  rename(x = X1, y = X2)
+
+ggplot(tibbleTSNEData, aes(x = x, y = y, colour = as.factor(label))) +
+  geom_point(alpha = 0.3) +
+  theme_bw()
+
+#for different perplexities:
+
+##################################################
+##
+## Note: this takes a long time to run!!
+##
+##################################################
+
+perplexitiesToTry       = c(20,50,100, 200)
+listTSNEResults         = vector("list", length(perplexitiesToTry))
+listTSNEDataForPlotting = vector("list", length(perplexitiesToTry))
+listTSNEPlotsPerplex    = vector("list", length(perplexitiesToTry))
+
+for (i in seq_along(perplexitiesToTry)) {
+  listTSNEResults[[i]] = Rtsne(dataMNIST$x, perplexity = perplexitiesToTry[i])
+  listTSNEDataForPlotting[[i]] = tibble(data.frame(listTSNEResults[[i]]$Y)) %>%
+    mutate(label = labelsMNIST) %>%
+    rename(x = X1, y = X2)
+  
+  listTSNEPlotsPerplex[[i]] = ggplot(listTSNEDataForPlotting[[i]],
+                                     aes(x = x, y = y, colour = as.factor(label))) +
+  geom_point(alpha = 0.3) +
+  theme_bw()
+}
+
+show(listTSNEPlotsPerplex)
+
+```
+
+Q3: Is there any sneaky PCA stuff going on even though we're running t-SNE? Check the help of this t-SNE function.
+
+#Answer: Yes, if you used the default options, there is. t-SNE is very resource-intensive, and so by default a preprocessing step is done, performing PCA and keeping the (by default) top 50 components. It is then on these top 50 components that the t-SNE is done. Even this manifold method uses good old (and effective!) PCA to first filter out useless noise!
+
+Q4: How well does t-SNE separate the digits?
+
+#Answer: certainly a lot better than PCA does. They are all in separate clouds, with only a little overlap. Note that for the higher perplexities (>50) it seems that the standard number of iterations doesn't lead to convergence, so it should have been run longer. (See here: https://distill.pub/2016/misread-tsne/)
+
+Q5: What can you say about the vicinity of, say, 1s to 7s? What digit cluster is closest to what other digit cluster?
+
+#Answer: You cannot say anything about this. t-SNE does all sorts of visual tricks to make the clear clusters. That there are different clusters you know, but global distances don't mean anything in a t-SNE plot! They are not kept as they are in the high-dimensional space.
+
+
+Finally, let's have a look at UMAP. First, watch this short introduction to the idea of UMAP: https://www.youtube.com/watch?v=6BPl81wGGP8 . I trust you know the drill. Run UMAP and plot the results. Be sure to read a little bit of https://umap-learn.readthedocs.io/en/latest/ to understand the basic parameters. The function call is umap()
+
+```{r}
+
+
+######
+# ANSWER
+######
+
+umapMNIST = umap(dataMNIST$x)
+
+umapMNISTForPlotting = umapMNIST %>%
+  as.data.frame() %>%
+  tibble() %>%
+  rename(x = V1, y = V2) %>%
+  mutate(label = labelsMNIST)
+
+ggplot(umapMNISTForPlotting, aes(x = x, y = y, colour = as.factor(label))) +
+  geom_point(alpha = 1) +
+  theme_bw()
+
+```
+
+
+
+Q6: How well has UMAP separated the data?
+
+#Answer: Quite well, also much better than PCA and seemingly quicker than tSNE.
+
+Q7: Is there anything noticeably different between the UMAP and t-SNE plots
+
+#Answer: In the run I did, certain groups of numbers clustered closely together in the UMAP plots. Specifically, 5, 3 and 8, and 7, 9 and 4. At least for 5, 3, and 8 this feels somewhat logical: 8 and 3 really look quite alike. It might be that the global structure holds some information here too. For more comparison, see also here: https://towardsdatascience.com/dimensionality-reduction-for-data-visualization-pca-vs-tsne-vs-umap-be4aa7b1cb29
+
+
+Q8: Why are UMAP and t-SNE so much better at getting the data into visually pleasing groups?
+
+#Answer: these are manifold methods, methods based on the insight that what you really want is to visualise some local part of the multidimensional space, namely the part that holds all the observations, such that global and local distances (in the case of t-SNE really only local structure) correspond pretty well to the multidimensional ones. PCA simply rotates all of the data by making new axes that are linear combinations of the old dimensions, which is not enough to nicely separate different image groups from each other: you need more than linear recombinations, ordered by percentage of variance explained.
+
+
+So far, so good. The takeaway is that manifold methods such as t-SNE and UMAP can find non-linear structures in the data, structures that might allow you to separate complex data such as digits, but also cell types from different tissues with different gene expressions, much better than linear methods like PCA. Often, preprocessing is still done with PCA. The material discussed so far is the brunt of what you need to know: clustering and how it works, and dimension reduction methods and how they work.
+
+########################################
+#
+#       PCA eigenface part
+#       This is an extra exploration of what PCA is doing.
+#       It is not required to finish this, as long as you understand what was covered in the lectures and above.
+#
+########################################
+
+
+Now, let's use something that our brains are especially well-wired to interpret and think about: faces.
+
+
+The question is: can we take pictures of human faces, run them through dimensionality reduction, and still keep most of the, well, face-ness intact? Start by running the code below to import images of faces (specifically, from here: http://vis-www.cs.umass.edu/lfw/ , and within that data only those people whose names start with a).
+
+
+
+```{r}
+
+
+#get the file names
+faceDir = "./Faces"
+fileNames = list.files(path =faceDir, pattern=".*.jpg")
+str(fileNames)
+
+#read in the images
+imageList = lapply(paste0(faceDir, "/", fileNames), readImage)
+#look at what each image looks like.
+str(imageList[[1]])
+
+
+
+```
+
+Great, we have images. Let's view some.
+
+```{r}
+
+#display 15 images
+for (i in seq(15)) {
+  
+  randomImageIndex = sample(seq_along(imageList), 1)
+  imageToDisplay = imageList[[randomImageIndex]]
+  nameImage      = fileNames[randomImageIndex]
+  print(nameImage)
+  display(imageToDisplay, "raster")
+  
+}
+
+```
+
+
+For our dimensionality reduction to be more manageable, let's make the images grayscale.
+
+```{r}
+greyImageList = list(length(imageList))
+for (i in seq_along(imageList)) {
+  
+
+  greyImageList[[i]] <- imageData(channel(imageList[[i]], "gray"))
+  
+}
+
+
+```
+
+See how that looks.
+
+```{r}
+for (i in seq(10)) {
+  
+  randomImageIndex = sample(seq_along(greyImageList), 1)
+  imageToDisplay = greyImageList[[randomImageIndex]]
+  nameImage      = fileNames[randomImageIndex]
+  print(nameImage)
+  display(imageToDisplay, "raster")
+  
+}
+```
+
+Now, up to you to question the data somewhat. Answer the following questions using code you write below:
+
+Q1: How many data points are there?
+Q2: How many unique people are in this dataset?
+Q3: Whose face is most represented in this dataset, and how many times is that face represented?
+Q4: What does the distribution of counts of people look like? (use hist)
+
+**Hint: you can use functions like str_replace_all to change '.jpg' into an empty space ''. If you do the same for numbers and underscores, you are left with only the names. Then you can use the unique() function and table() along with which.max() to get the answers**
+
+**Hint: to make a histogram, use R's built-in hist() function**
+
+```{r}
+
+#demonstrations of the functions you can use:
+
+
+#replace numbers and underscores
+
+someString = "Billy_Jean_Is_Not_my_Love_995599.mp3"
+noUnderscores = str_replace_all(someString, "_", "")
+noExtension = str_replace_all(noUnderscores, "\\.mp3$", "")
+noNumbers = str_replace_all(noExtension, "[0-9]", "")
+#You can also use other methods like str_extract or intricate regexp queries, if you know them. If not, these 3
+#ingredients should get the result you want!
+
+
+#investigating how many entries there are of specific types and unique entries
+
+someVector = c("banana", "apple", "grape", "apple", "plum", "banana", "apple", "Weird Al", "Stegosaurus", "plum")
+print(someVector)
+#get unique entries
+print(unique(someVector))
+#count and tabulate entries
+print(table(someVector))
+#get the index of the element in the table with the maximum value 
+print(which.max(table(someVector)))
+#print that element
+print(table(someVector)[which.max(table(someVector))])
+
+
+#Now it's up to you, get the names of the people whose faces are in the data, see how many unique people
+#there are, tally how many times each person is in there and make a histogram, and see who is in there the most
+
+##ANSWER##
+
+print(paste0("Amount of data points: ", length(fileNames)))
+namesWithUnderscore = str_extract(fileNames, "[A-Za-z-]*_*[A-Za-z-]*_*[A-Za-z-]*_*[A-Za-z-]*_*")
+namesNoUnderscore = str_replace_all(namesWithUnderscore, "_", "")
+length(unique(namesNoUnderscore))
+tableNames = table(namesNoUnderscore)
+mostEntriesIndex = which.max(tableNames)
+print(paste0("Most entries: ", tableNames[mostEntriesIndex], " ", names(tableNames[mostEntriesIndex])))
+hist(tableNames)
+
+```
+
+
+
+Now that you've gotten to know the data some, let's do what we set out to do.
+
+To prevent confusion, it is important to clarify what we are going to do exactly. We have a dataset of 1024 human faces. Each face is made up of 250*250 = 62,500 pixels. Normally what you might want to do is look at each face as a sample, with every pixel a feature in that sample. You could, for example, cluster the faces, reduce the dimensionality, and see what clusters of faces there are that are similar in their pixel values (perhaps hairless faces might cluster together, and faces with hair could cluster somewhere else).
+
+In this example, we'll ask something else. We will take each pixel as a sample in a 1,024-D space. In other words: 62,500 datapoints, consisting of the value of each pixel in each face. Why would you do that? Well, if you do that, and then do PCA on that data, you thereby rotate the data such that you get 1,024 principal components. The first will capture most of the variance in pixel values among all faces, the second the second most variance, etc. Since every pixel has a position on each of these new components, you can actually look at them. These are the so-called eigenfaces: the visualisations of variance in which pixels each principal component captures. Sometimes these visualisations are interpretable (focusing in the eye region or ear region or ...) 
+
+First, let's think about the dimensionality of the input space. You can use the code block below to answer these questions.
+
+Q5: What do the numbers printed in the matrix signify? 
+
+#Answer: grayscale values, from 0-1 (actual pixel intensity is normally from 0-255)
+
+Q6: What is the dimension of the input space?
+
+#Answer 250*250 = 62500-dimensional is what you might think. However, note that, as the story above says, we have changed the representation. Hence we have 62,500 pixels, with 1,024 values each, so 1,024-dimensional data.
+
+Q7: Do you think that this n*n-dimensional space is evenly (or randomly) filled with examples from this data, or not? In other words: in all the values that data in this n.n-dimensional space could take, how special are faces? Why?
+#Answer: In this dimensionality, we can represent images of wasps, chickens, buildings, galaxies, UFOs, and what have you. It is a huge possibility space. If we think about this huge space, it makes sense that faces are a very special case within all the possible values. Another way of conceptualising this is thinking about a random point in such a space: an image of random values between 0-1 for each pixel will look nothing like a face at all. Hence, nor like a fish or a boat or a house, while those things in turn look nothing like a face. 
+
+
+Q8: Do you think it is a logical step to perform PCA, a linear dimension reduction method, on this (type of) data?
+
+#Answer: No, probably not really. But that is a wrong intuition. It might seem much more logical to use a manifold method, since anything to do with faces and images might not be best served with a linear method. However, there is no real way to know that before trying. This method is a classic example where you can see what PCA is doing, and was used as a preprocessing step for face classification in the 1990s. Further steps below will show you that even though the linear approach might not seem the most logical, it can still do the job quite well. Don't be afraid to just use PCA to see what you get in exploratory data analysis, especially before moving on to (much) more complicated methods!
+
+
+
+```{r}
+#sample image
+someImage = sample(greyImageList, 1)[[1]]
+print(someImage[1:50, 1:50])
+dim(someImage)
+#random image
+display(matrix(runif(n = 250^2, 0,1), 250), "raster")
+
+```
+
+
+
+Regardless of your feelings in question 8, we will soldier on and do the PCA. Remember that PCA does not, in and of itself, do dimension reduction: it just creates orthogonal axes through your data, starting from the axis that captures most variance, to the next most variance, etc. In other words: there are as many of these axes as there are dimensions in your data. It's up to you to select the top n principal components to keep. As a first step, we need to get our data in a form useful for PCA. PCA is often performed via something called singular value decomposition (details for the mathematically inclined here: https://stats.stackexchange.com/questions/189822/how-does-centering-make-a-difference-in-pca-for-svd-and-eigen-decomposition ), and this requires data with a zero-mean. This has a cool side effect: we need to calculate the 'average face' (or 'average value of each pixel across the 1,024 faces') and subtract it from the data. Up to you to do this and uncover the ghostly average face!
+
+Q9: in the code block below, compute the mean value of every pixel over all images. Then, visualise this face by displaying the matrix.
+
+Q10: in the code block below, make sure each row has 0 mean by subtracting the rowMeans from the data. (So you subtract the mean grey intensity of pixel 1 across all images from the value of pixel 1 in every image). To check that you did it correctly, calculate the rowMeans() again. They should be zero (or close to it: e^(-17) is close enough). 
+
+**Hint: use matrix() (as shown below), rowMeans(), and display(YOURAVERAGEFACEHERE, method = "raster")**
+
+```{r}
+
+#step 1: each image is a 250*250 square matrix. But for PCA we need something like a data table, with samples in the columns, and values in the rows, i.e. like:
+
+exampleData = data.frame("face1" = c( 0.55,0.33,0,0.56), "face2" = c(0.786,0.257,1, 0))
+rownames(exampleData) = c("pixel1", "pixel2", "pixel3", "pixel62500")
+exampleData
+
+#You can easily switch between a vector and a matrix
+as.vector(someImage)
+matrix(as.vector(someImage), nrow = 250, ncol = 250)
+
+#put every image in a data frame
+greyImageDataFrame = data.frame(matrix(nrow = length(someImage), ncol = length(fileNames)))
+for (imageMatrixIndex in seq_along(greyImageList)) {
+  
+  greyImageDataFrame[,imageMatrixIndex] = as.vector(greyImageList[[imageMatrixIndex]])
+  
+}
+rownames(greyImageDataFrame) = paste0(rep("pixel", length(someImage)), seq(1,length(someImage)))
+colnames(greyImageDataFrame) = paste0(rep("face", length(imageList)), seq(1,length(imageList)))
+
+
+#Over to you. We now have a 62500*1054 data.frame with pixel data. Calculate the average face, display() it, and subtract the average values from the data.
+
+
+##ANSWER##
+
+#Computing the 'average' face in these datasets.
+avgFace = rowMeans(greyImageDataFrame)
+
+#So, how does an average grayscale face look?
+
+avgFaceMatrix = matrix(avgFace, nrow = 250, ncol = 250)
+display(avgFaceMatrix, "raster")
+
+#Subtracting the average face
+meanSubtractedGreyImageDataFrame = greyImageDataFrame - avgFace
+
+```
+
+
+Spooky! With that done we can do our PCA. We'll pare our set down to 256 faces to speed up calculation. The beauty of this approach is that we can visualise what, exactly, PCA is doing. Normally, we cannot. Go ahead and run the following code. In it, we perform PCA, and then look at the 10 eigenvectors with the largest eigenvalues, or in less technical terms: the 10D representation of the data that captures most of the variance in pixel intensity in the original data. Since each eigenvector is 62500-dimensional, you can simply put it back into the form of an image and look at it, to see what each image represents. In other words: you can look at the largest variance from the mean face, and then the second largest, etc. in this dataset. This allows you to visually inspect what each principal component might be 'measuring' variance in.
+
+```{r, fig.width=7, fig.height=7}
+
+#step 1: we'll randomly remove 75% of the images: otherwise things will take a LONG time to calculate
+
+sampledFaceIndices = sample(seq(1:1024), 1024/4)
+smallerDataFrame = meanSubtractedGreyImageDataFrame[, sampledFaceIndices]
+
+
+
+facePCA = prcomp(smallerDataFrame, scale = TRUE)
+print(summary(facePCA))
+
+#What do the principal components look like? What does a high or low value on these principal components correspond to? Let's find out!
+
+#get everything in matrix form
+fullComponentMatrixList = list(ncol(facePCA$x))
+for (component in seq(1:ncol(facePCA$x))) {
+  
+  fullComponentMatrixList[[component]] = matrix(facePCA$x[, component], nrow = 250, ncol = 250)
+}
+
+
+
+for (component in seq(1:10)) {
+  
+  #draw it --> drawing logic assumes a different ordering of the matrix so we have to flip it, see: https://stackoverflow.com/a/66453734 
+  image(fullComponentMatrixList[[component]][, nrow(fullComponentMatrixList[[component]]):1],
+        col = gray.colors(256, 0, 1))
+  
+}
+
+```
+
+In these images, the blacker or bright whiter an area, the larger its variance on this Principal component. 
+
+Q11: First, scroll up to look at the normal input faces we fed into our PCA again. Given the variability in these faces (and backgrounds!), what do you think the first five principal components might roughly correspond to? Think of orientation (left-right and where the face is in the image), background brightness, and some prominent facial features. (Note: this question is hard to do wrong, but also hard to do exactly right. Make educated albeit creative guesses!).
+
+#Answer: it seems that at least one dimension corresponds to the lighting of the background around the faces, and others might focus in on hair.
+
+Q12: The first principal component is the dimension along which faces in this dataset vary the most from the mean. Why do you think that it looks as it does?
+
+##Answer: It is probable that PC1, at least, has something to do with the background brightness. You can see in the original images that backgrounds can either be quite dark or quite bright.
+
+PCA is used for dimensionality reduction. So let's see: in how many dimensions can we put our data to still capture most of the variance? Run the following code and look at the plots, then answer the questions below.
+
+
+```{r}
+
+#How much variance in the pixel intensities among the 1,024 faces does each principal component capture?
+
+#calculate total variance explained by each principal component
+varExplained = facePCA$sdev^2 / sum(facePCA$sdev^2)
+
+#create scree plot
+qplot(c(1:length(varExplained)), varExplained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot (percentage of variance explained by each PC)") +
+  ylim(0, 1) +
+  theme_bw()
+
+#Create cumulative variance explained plot
+cumulVar <- cumsum(varExplained)
+plot(cumulVar[0:50], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot (zoom-in until 75%)")
+abline(h = 0.5, col="blue", lty=5)
+abline(v = 10, col="blue", lty=5)
+abline(h = 0.75, col="red", lty=5)
+abline(v = 40, col="red", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC10", "Cut-off @ PC40"),
+       col=c("blue", "red"), lty=5, cex=0.6)
+
+
+#what if we really wanted 90% of the variance?
+plot(cumulVar[0:100], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot (up to 90%)")
+abline(h = 0.9, col="green", lty=5)
+abline(v = 100, col="green", lty=5)
+
+legend("bottomleft", legend=c("Cut-off @ 100"),
+       col=c("green"), lty=5, cex=0.6)
+
+
+#print(facePCA$center)
+#print(facePCA$stdev)
+
+
+```
+Q13 How many dimensions do you need to keep 50% of the variance in the face data? And 75%?
+
+#Answer: 10, 40 (out of 256 faces!). So by rotating (and scaling and centering) the axes through the data, you can go to 40 dimensions and still have quite a lot of the variance left!
+
+Q14 By what factor can you decrease the dataset size and still keep 90% of the variance? Remember, you started with 62,500 datapoints (pixel intensities), each of which needed 256 faces to describe (how the pixel intensities vary among the face images). But by rotating things around, you can shrink from 256 to fewer values to describe this data, and that still represents 90% of the variation in the original 256 unique images.
+
+#A: you compressed the data by a factor of 2.56. You can keep 90% of the variance by taking 100 faces. In a way, PCA could therefore also function as a compression algorithm of sorts (you lose 10% of the data, but use 2.56 times fewer space to represent what you are left with).
+
+Now what we can do is try to reconstruct our original faces from the values they have in the compressed space (and by adding the mean face back in). Let's see how that looks for a changing number of principal components used. Run the two code blocks below and look at the results. This will give you a visual intuition for how well you can describe a face by these axes along which the intensities vary most. What is 50% in the variance of pixels in faces look like? Or 90%? Find out below!
+
+
+
+```{r, fig.width=7, fig.height=7}
+
+
+
+#take a random face from the 256 that we did the PCA on
+randomImageIndex = sample(sampledFaceIndices, 1)
+faceNumberInPCAObject = which(sampledFaceIndices == randomImageIndex)
+imageToDisplay = greyImageList[[randomImageIndex]]
+nameImage      = fileNames[randomImageIndex]
+
+
+
+#make more specific faces continuously, by adding more and more PCs
+
+steps = c(1,2,3,4,5,6,7,8,9,10, seq(20, 240, 20), 256)
+
+image(avgFaceMatrix[, nrow(avgFaceMatrix):1],col = gray.colors(256, 0, 1),
+        main = paste0("Average Face"))
+for (PCsToAdd in steps[seq_along(steps)]) {
+  
+  currentReconstruction = avgFaceMatrix
+  for (matrixIndex in seq_along(fullComponentMatrixList[1:PCsToAdd])) {
+    currentReconstruction = currentReconstruction + facePCA$rotation[faceNumberInPCAObject, matrixIndex] *
+      fullComponentMatrixList[1:PCsToAdd][[matrixIndex]]
+  }
+  
+  
+image(currentReconstruction[, nrow(currentReconstruction):1],
+        col = gray.colors(256, 0, 1),
+        main = paste0("Reconstruction using ", PCsToAdd, " Principal Components" ))
+  
+}
+
+#print normal face
+print(nameImage)
+image(imageToDisplay[, nrow(imageToDisplay):1],
+        col = gray.colors(256, 0, 1),
+        main = paste0("Original" ))
+
+
+
+```
+
+
+Note that the slight discrepancy between the 256-PC reconstruction and the original image is because of a normalisation of the variance in every pixel: if pixel 1 only ever has values between 0.6 and 0.7, while another can vary between 0.2 and 1, then the second pixel would automatically have 'more' variance, so influence the PCA more, but that is not, per se, fair. That's why we scaled.
+
+So what, exactly, did we do here? We start from the average face (which you subtract from the data to perform the PCA, but need to add back in to get to a correct face). Then we add the value of 62,500 pixels projected onto PC1 to the pixel intensities of the average face. It then looks ever so slightly more like what it should be. We keep doing this, adding the projections of these pixels on each of the 256 components in the data. You see that for 50% of the variance added back in (10 PCs) it doesn't look much like the real face image. But for 90% of the variance (100 PCs) it is quite a way there. You could imagine reducing to 100 dimensions and then classifying whose face it is if you had the labels and could do supervised learning. 
+
+How about actually reducing the dimensions to 2 and visualising that? Can we see anything in the 2D representation of this data? Where, for example, is our most numerous gentleman, Ariel Sharon, in this representation? 
+
+```{r}
+
+imageIndicesSharon = which(namesNoUnderscore == "ArielSharon")
+sampledDataPointsSharon =  which(sampledFaceIndices %in% imageIndicesSharon)
+
+dataWithSharonNotSharon = data.frame(facePCA$rotation[,1:2])
+dataWithSharonNotSharon$Person = "Not Sharon"
+dataWithSharonNotSharon[sampledDataPointsSharon,"Person"] = "Sharon"
+
+plot2D = ggplot(data =dataWithSharonNotSharon,
+           aes(x = PC1, y = PC2, color = Person)) +
+           geom_point() +
+           theme_bw()
+
+show(plot2D)
+
+```
+
+Seems like Ariel Sharon is hanging out mostly in one area. In fact, it seems that Ariel Sharon is mostly to one side of PC1. Can we see why? Run the code below, and answer the question.
+
+
+
+```{r, fig.width=4, fig.height=4}
+#select points based on PC1 coordinates
+outlierRows = dataWithSharonNotSharon[sampledDataPointsSharon, ][dataWithSharonNotSharon[sampledDataPointsSharon, ]$PC1 < 0,]
+normalRows  = dataWithSharonNotSharon[sampledDataPointsSharon, ][dataWithSharonNotSharon[sampledDataPointsSharon, ]$PC1 >= 0,]
+
+#Becaue the sign of the coordinates on the PC is random, I need to make sure that what I call outliers or not based on PC1 are indeed the outliers. I do this by checking that the outliers are the fewest datapoints, while normal comprises  most of the points.
+if (nrow(normalRows) < nrow(outlierRows)) {
+  #flip them around
+  realNormal = outlierRows
+  outlierRows = normalRows
+  normalRows = realNormal
+  
+}
+
+sharonOutlierImageIndices = as.numeric(str_replace_all(rownames(outlierRows), "face", ""))
+sharonNormalImageIndices  = as.numeric(str_replace_all(rownames(normalRows), "face", ""))
+
+
+#plot the images of normal and outlier Sharons based on PC1
+for (index in sample(sharonNormalImageIndices, length(sharonNormalImageIndices)/2)) {
+  image(greyImageList[[index]][, nrow(greyImageList[[index]]):1],
+        col = gray.colors(256, 0, 1),
+        main = paste0("Sharon Normal" ))
+}
+
+for (index in sharonOutlierImageIndices) {
+  image(greyImageList[[index]][, nrow(greyImageList[[index]]):1],
+        col = gray.colors(256, 0, 1),
+        main = paste0("Sharon Outlier" ))
+}
+
+
+
+
+
+
+```
+Q15 Do you see any obvious differences between the outliers and normal points? Do you think this is logical? How does this reflect on your earlier answer to what PC1 seemed to do?
+
+##Answer: It is hard to tell. It could be that the images differ mostly in the brightness of their background: it looks like the normal images have brighter backgrounds than the outliers. But it is hard to be sure. However, it is very well possible that lightning conditions of the background is a major point of variance. Still, it is hard to tell, and We don't expect that we could accurately judge these images along differences in just 1 principal component that accounts for only ~12% of the variation.##
+
+
+
+Now, there's actually quite a lot of variation in the faces in this dataset. Let's quickly check how PCA fares in another dataset with faces pictured from the front and with uniform background.
+
+```{r, fig.width=9.6, fig.height=5}
+#read data
+centeredFacesDataset = R.matlab::readMat("./CenteredFaces/faces.mat")
+
+#take an example matrix for reference purposes
+exampleFaceMatrix = centeredFacesDataset$face[[3]][[1]]
+
+#make the matrix modification into a function so I don't have to do that manually each time
+displayCenteredFace <- function(face, title = "") {
+  transposedFace = t(face)
+  reorderedFaceMatrixForDrawing = transposedFace[, ncol(transposedFace):1]
+  image(reorderedFaceMatrixForDrawing, col = gray.colors(256, 0, 1), main = title)
+  #don't return anything
+  k = invisible(TRUE)
+}
+
+#draw 10 example faces
+for (i in seq(1:10)) {
+  indexToDisplay = sample(seq(1:length(centeredFacesDataset$face)), 1)
+  displayCenteredFace(centeredFacesDataset$face[[indexToDisplay]][[1]], title = paste0("Face ", i))
+  
+}
+
+
+#put every image in a data frame as a 1728 by 1 vector.
+greyImageDataFrameCentered = data.frame(matrix(nrow = length(exampleFaceMatrix), ncol = length(centeredFacesDataset$face)))
+for (imageMatrixIndex in seq_along(centeredFacesDataset$face)) {
+  
+  greyImageDataFrameCentered[,imageMatrixIndex] = as.vector(centeredFacesDataset$face[[imageMatrixIndex]][[1]])
+  
+}
+rownames(greyImageDataFrameCentered) = paste0(rep("pixel", length(exampleFaceMatrix)), seq(1,length(exampleFaceMatrix)))
+colnames(greyImageDataFrameCentered) = paste0(rep("face", ncol(greyImageDataFrameCentered)),
+                                              seq(1,ncol(greyImageDataFrameCentered)))
+
+#See how that looks
+head(greyImageDataFrameCentered)
+
+#subtract the mean face
+avgCenteredFace = rowMeans(greyImageDataFrameCentered)
+normalisedCenteredFaces = greyImageDataFrameCentered - avgCenteredFace
+
+#do the pca
+pcaCenteredFaces = prcomp(normalisedCenteredFaces, scale = TRUE)
+
+#Assemble the top 10 principal components (eigenvectors) into images you can view (back to matrix form)
+eigenFacesList = list(10)
+for (PCnum in seq_along(colnames(pcaCenteredFaces$x[,1:10]))) {
+  eigenFacesList[[PCnum]] = matrix(pcaCenteredFaces$x[, PCnum], nrow = dim(exampleFaceMatrix)[1],
+                                 ncol = dim(exampleFaceMatrix)[2])
+  
+}
+#show the average face
+displayCenteredFace(matrix(avgCenteredFace, nrow = dim(exampleFaceMatrix)[1],
+                                 ncol = dim(exampleFaceMatrix)[2]), title = "Average face")
+
+#show the first 10 PCs
+purrr::map2(eigenFacesList, paste0("PC ", seq(1:10)), displayCenteredFace)
+
+```
+
+Q16: what do you think the first few principal components correspond to here? Again, it is hard to be sure so feel free to speculate.
+
+##Answer: PC1 and PC2 both seem to focus on hair, PC3 could be about where, exactly, the shoulders are in the image, PC4 is just a scary lizardman put there by our overlords to scare us (real answer: no idea), PC5 might focus a bit on the type of collar/neck clothing.
+
+
+So far so good. We hope this has given you a bit more intuition about what PCA might be doing. Important takeaways are that:
+1. Even if you would think that manifold methods are the method of choice a linear method can still work well: with 100-150 PCs, you got a pretty good reconstruction of the face already, so you can reduce to this dimensionality and not lose too much discriminative power!
+2. PCA, on its own, is not a dimensionality reduction tool: running PCA just gives us the linearly rotated original space. It is up to us to select how much of the variance of the data we want to keep/think is enough for visualisation.
+3. It is not a given that a principal component is interpretable to us, or maps to a specific thing in the data: we got lucky that PC1 might correspond to something we can understand. Many of the PCs just look very strange. Still, we can map metadata (like sample type, cell types, patient IDs, etc.) to the data points to see what certain PCs might be separating on.
+
+
+
+#########################################################################
+#
+#       OPTIONAL FINAL EXERCISE: Trying to replicate a paper figure
+#
+#########################################################################
+
+The practical has become progressively more hands-on (well, at least, that was the intention). Now is the time for the piece de resistance, coup de grace, the one and only omelet du fromage. You can quickly scan this paper: https://www.sciencedirect.com/science/article/pii/S2211124719305273#mmc1 (a pdf is also included in the folder you downloaded from GitHub). Using the data (https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE122687) and Seurat (https://satijalab.org/seurat/), try to replicate (part of) Figure 1B from the paper. Given the legend from figure S1E, you'll need the FindClusters() function from Seurat for this. You'll probably need all data from files A to J, although do check table S1 because some are replicates. Feel free to only make a visualisation for 1 dataset, (only A or only G, for instance), or to remove replicates. The files can be confusing, and that's the idea, because it's what you might run into in the wild. You can look up accessions here: https://www.arabidopsis.org/servlets/TairObject?type=locus&name=At1g01020 (this is an example of one location whose transcripts were tallied). Be sure to click through on the GEO site with data to see how subdatasets were made and what they represent (for instance, for replicate A: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM3478125).
+
+To work with this data, you might need various functions from the tidyverse. See beginner cheatsheet here: http://datacamp-community-prod.s3.amazonaws.com/c1fae72f-d2d7-4646-9dce-dd0f8fb5c5e8; dplyr cheat sheet : https://dplyr.tidyverse.org/; readr (data read-in) cheat sheet: https://readr.tidyverse.org/ ; ggplot cheat sheet: https://ggplot2.tidyverse.org/. These cheat sheets are also in the aptly named cheat sheets folder of the repository you cloned. Good luck!
+
+So:
+-scan the paper
+-download the data, look at the data provenance (what sort of data is it? How was it processed?)
+-make a tSNE (or UMAP) plot of the same type as that in figure 1B of the paper, either on all the data from dataset A to J, or on a subset if you want.
+
+NOTE: this is a lot of data and difficult stuff. In fact, I don't have the answers ready at all. So just start with a small subset if you want to take this on and work from there. It's probably a lot for your poor laptops to handle (;
+
+
+```{r}
+
+```
+
+
+
+#The end!

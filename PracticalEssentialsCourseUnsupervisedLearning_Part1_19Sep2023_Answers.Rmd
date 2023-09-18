@@ -1,0 +1,318 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Unsupervised learning day 1
+
+#############################################
+#
+#       Setup 
+#
+#############################################
+
+
+```{r}
+##SETUP CHUNK: INSTALLS AND LOADS NEEDED PACKAGES##
+
+#gives access to biologically oriented R packages from the Bioconductor project (https://bioconductor.org/)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+#this installs pacman: using its p_load function you can load any package you want, and if you don't have it installed it will automatically download it for you.
+if(!require(pacman)) {
+install.packages("pacman"); require(pacman)}
+#load packages we want to use
+p_load(ggplot2, magrittr, plyr, tidyverse, EBImage, stringr, R.matlab, gganimate, png, gifski, knitr, ggdendro, Rtsne, uwot)
+
+#some packages are not on CRAN, so need to be downloaded manually
+source("usefulFunctions.R")
+
+```
+
+
+#############################################
+#
+#       K-means clustering
+#
+#############################################
+
+We'll start by performing some K-means clustering. The code block below generates some random data with which to perform the clustering. We colour the points according to the pre-set cluster they are supposed to belong to, based on the signal we generate in the data. That is to say: normally you don't know beforehand what cluster a data point belongs to, but here we generate data in 4 different areas, and colour them by the data generating process we used as their real clustering. 
+
+```{r}
+
+meanX = c(2,2.5,8,7.3)
+meanY = c(2, 7.9, 2.33, 9)
+sds   = c(0.8, 1.2, 1.124, 0.65)
+nPoints = rep(25, 4)
+clusterIdentity = c(rep("1", 25), rep("2",25), rep("3",25), rep("4",25))
+
+xValues = purrr::pmap(list(nPoints, meanX, sds), rnorm)
+yValues = purrr::pmap(list(nPoints, meanY, sds), rnorm)
+
+dataforClustering = as_tibble(list("Gene 1 Expression" = unlist(xValues),
+                                    "Gene 2 Expression" = unlist(yValues),
+                                   "True Cluster" = as.factor(clusterIdentity)))
+
+
+ggplot(data = dataforClustering, aes_string(x = "`Gene 1 Expression`", y = "`Gene 2 Expression`", colour = "`True Cluster`")) + geom_point(size = 3) +
+  theme_bw() 
+  
+  
+
+```
+Now it is time to perform some clustering on this data. Run the code block below, and answer the questions. We perform k-means until convergence is reached (the centroids don't move anymore) for 4 different random initialisations of 4 clusters.
+
+
+```{r}
+
+#ignore the warnings this produces
+
+centersForRuns = getKRandomStartPoints(data = dataforClustering, k = 4, randomStarts = 4)
+
+kMeansOutcomes = calculateKMeansTrajectoryEachRandomInit(data = dataforClustering,
+                                                         initialCentroids = centersForRuns)
+plotsAndAnimations = makePlotsAndAnimation()
+
+```
+
+```{r}
+#random initialisation 1 and 2
+plotsAndAnimations$plots[[1]]
+print("---")
+plotsAndAnimations$plots[[2]]
+```
+
+
+```{r}
+#random initialisation 3 and 4
+plotsAndAnimations$plots[[3]]
+print("---")
+plotsAndAnimations$plots[[4]]
+```
+
+```{r}
+#animations --> change the number to see a different one
+plotsAndAnimations$animations[[2]]
+```
+
+Q1: Look at the clusters produced. How many get, or almost get, the 'real' clustering that produced the data?
+
+#Answer: this depends on your random initialisation, which we haven't set to a certain seed on purpose to keep things interesting and different for discussion. About 2 converged on 4 clusters in our case.
+
+Q2: In the cases where a 'wrong' clustering was obtained, what caused this?
+
+#Answer: in general what will happen is that a cluster centroid gets 'stuck' behind another. For example, if three centroids are, at random, initialised in the same real cluster, then it happens that 1 centroid covers two clusters, while the others divvy up the remaining points between them. This is exactly why you need multiple initialisations!
+
+Q3: We actually cheated here, in the sense that we know the underlying data structure, and adapted our k to it (4). In reality, we wouldn't know this (although in this 2D data, we could use our visual system!). Try k-values from 2 to 8, and see what sort of clusters you get. Use the code chunk below and the functions defined above. Feel free to make extra code blocks as needed. What do you see?
+
+
+
+
+```{r}
+#Use these functions (example for k=2 given):
+centersForRunsKTwo = getKRandomStartPoints(data = dataforClustering, k = 2, randomStarts = 4)
+
+kMeansOutcomesKTwo = calculateKMeansTrajectoryEachRandomInit(data = dataforClustering,
+                                                         initialCentroids = centersForRunsKTwo)
+
+plotsAndAnimationsKTwo = makePlotsAndAnimation(kMeansOutcomeData = kMeansOutcomesKTwo, centers = centersForRunsKTwo)
+
+#Hint: we used these objects above, but if you get stuck, use str(objectName). plotsAndAnimations is a list with two sublists: [["plots"]], which holds all plots generated sequentially from iterating through the k-means steps and [["animations"]], which holds animations generated from combining those plots together. Just get a feel for the different amounts of clusters and how they look.
+
+
+
+######
+##
+##ANSWER
+##
+######
+
+outcomeList = vector("list", 8)
+for (kThisRun in seq(1,8)) {
+  
+  centersThisRun          = getKRandomStartPoints(data = dataforClustering, k = kThisRun, randomStarts = 4)
+  kMeansOutcomeThisRun    = calculateKMeansTrajectoryEachRandomInit(data = dataforClustering,
+                                                         initialCentroids = centersThisRun)
+  plotsAndAnimsThisRun    = makePlotsAndAnimation(kMeansOutcomeData = kMeansOutcomeThisRun, centers = centersThisRun)
+  outcomeList[[kThisRun]] = list(centers       = centersThisRun,
+                                 kMeansOutcome = kMeansOutcomeThisRun,
+                                 plots         = plotsAndAnimsThisRun)
+  
+}
+
+
+#see plots for k = 2, 4, 6, 8
+
+for (plotToSee in seq(2,8,2)) {
+  
+  show(outcomeList[[plotToSee]][["plots"]][["plots"]])
+  
+}
+
+
+```
+
+
+Q4: having seen this diversity, try to think of a way you could try to quantify how good a given k-means clustering is. Think about how well each point in a cluster 'fits' or belongs to that cluster versus how well-separated the clusters are (how far the centroids are away from each other).
+
+#Answer: What you'd want to do is do exactly what we discussed in the lecture: make sure that points in a cluster have a low spread, while there is a relatively larger spread between the clusters. That is: you want a cluster to be a tight spread of points, and ideally to be far away from any other cluster. 
+
+Q5: What would the optimal number of clusters be for n datapoints if you only want to minimise the distance from a point to the centroid of the cluster it belongs to? Is this useful?
+
+#Answer: That would be k=n, in other words: then you're not clustering. In this case, the distance from each point to its centroid is 0. That's perfect, but useless.
+
+
+________________________________________________________________________________
+________________________________________________________________________________
+
+
+
+
+########################################
+#
+#       Hierarchical clustering
+#
+########################################
+
+Another large branch of clustering is hierarchical clustering. We use it in phylogeny, for instance. Let's use it on the initial data we generated all the way at the top and see what we get. If you want a nice beginner's guide for hierarchical clustering, look here: https://www.datacamp.com/community/tutorials/hierarchical-clustering-R 
+
+
+```{r}
+
+dataHierarchical = dataforClustering %>% select(-contains("True "))
+print("Summary before scaling:")
+summary(dataHierarchical)
+dataHierarchical = as.data.frame(scale(dataHierarchical))
+
+print("Summary after scaling:")
+summary(dataHierarchical)
+
+ggplot(data = dataHierarchical, aes_string(x = "`Gene 1 Expression`", y = "`Gene 2 Expression`")) + geom_point(size = 3) +
+  theme_bw() +
+  ggtitle("Scaled data for hierarchical clustering")
+
+#label the points by trueClusterNr_dataPointNr by setting rownames.
+rownames(dataHierarchical) = paste0(dataforClustering$`True Cluster`, "_", rep(seq(1:25), 4))
+
+#Answer SD:
+print("SD after scaling:")
+apply(dataHierarchical, 2, sd)
+
+```
+
+Q1: What, exactly, does the scale command do in the code block above? Look at the mean and standard deviation after scaling. (For standard deviation, use the sd() command). 
+
+#Answer: It sets the mean to 0 and the standard deviation to 1. So it scales the data to a normal distribution centered at 0 and with an SD of 1.
+
+Q2: What is the importance of scaling? Think about the Euclidean distance metric in relation to unscaled characteristics. For instance: height (in m) and weight (in kg) of a person. What does scaling do?
+
+#Answer: height is unlikely to vary more than 1 unit, between 1 and 2 meters, mostly. Weight, however, can vary easily from 50-120 kg. If you think about distance calculations, this means that if you don't scale, the weight in kilograms would always dominate the distance between data points. Probably, you care about both weight and height in how similar you find two people, so you need to scale.
+
+Q3: We didn't scale before for k-means. Do you think this is because k-means is less affected by unscaled data than hierarchical clustering? 
+
+#Answer: k-means uses a distance metric, just as much as hierarchical clustering does. That's not it. Because we generated the data ourselves, we could make sure that their mean and distributions were almost the same. The data were already (more or less) on the same scale. In a real example, it would be best practice to just scale before doing these things, to make sure that all data is on a level playing field wrt. distance measures.
+
+
+On to the clustering. In the code block below, use the dist() function to calculate the Euclidean distance. Then use the hclust() function to cluster observations using average linking, complete linking, and single linking. Finally, plot the results using ggdendrogram(). You can add a title and use theme_bw() to make the plots somewhat nicer. You can also use theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=1)) to rotate the x-axis labels. Use ?hclust and ?dist to find out how the functions work!
+
+
+```{r, fig.width= 13}
+
+
+
+#####
+#answer
+#####
+
+
+distanceMat = dist(dataHierarchical, method = "euclidean")
+avgCluster  = hclust(distanceMat, method = "average")
+comCluster  = hclust(distanceMat)
+singCluster = hclust(distanceMat, method = "single")
+plotClustav = ggdendrogram(avgCluster) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=1)) +
+  ggtitle("Average linkage clustering (UPGMA)")
+plotClustco = ggdendrogram(comCluster) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=1)) +
+  ggtitle("Complete linkage clustering")
+plotClustsi = ggdendrogram(singCluster) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=1)) +
+  ggtitle("Single linkage clustering")
+
+
+show(plotClustav)
+show(plotClustco)
+show(plotClustsi)
+```
+
+
+Q4 Describe in your own words what single linkage, complete linkage, and average linkage do.
+
+#Answer: single linkage links a cluster to another cluster based on the single smallest distance to that other cluster. So in clusters with 100 points each, 1 outlier point in 1 cluster could be closest to another outlier point in another cluster, and that would cause those two clusters to be linked. 
+#Complete linkage is the opposite: clusters are linked based on the points in them that are furthest apart. So it will only tend to combine clusters that are really close.
+#Average linkage calculates distances of all points between clusters, then calculates the average, and links based on that.
+
+Q5: What differences do you see between the plots for the different methods? Look at the scales as well.
+
+#Answer: single linkage produces long chains. This is logical, because each time the next closest point is added to a cluster. Here it functions quite well, but usually it fares poorly. Distances there are very short.
+#Complete linkage produces the largest distances, but otherwise looks pretty similar in structure to average linkage. #Average linkage produces intermediate distances, as you'd expect.
+
+Q6: Try one more clustering linkage method in the code block below, be it "WPGMA", "WPGMC" or "centroid". Look at https://stats.stackexchange.com/questions/195446/choosing-the-right-linkage-method-for-hierarchical-clustering for a short explanation of what each of these methods does. Do you see any significant differences from the 3 plots you made above?
+
+#Answer: for centroid clustering, for example, you get strange 3-way splits and distances going up. This looks positively strange, but the explanation might be that two separate clusters that you combine suddenly have a centroid that is much closer to another cluster than their separate centroids were before. See also here: https://stats.stackexchange.com/questions/217519/centroid-linkage-clustering-with-hclust-yields-wrong-dendrogram and here: https://stats.stackexchange.com/questions/13578/inversions-in-hierarchical-clustering 
+
+Q7: What final step do you need to take to get clusters, based on what you want out of your clustering?
+#Answer: you need to cut this chart somewhere horizontally, and take the clusters at that level of the hierarchical clustering.
+
+```{r, fig.width= 13}
+#####
+#Answer
+#####
+
+centroidClust     = hclust(distanceMat, method = "centroid")
+plotClustCentroid = ggdendrogram(centroidClust) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust=1)) +
+  ggtitle("Centroid linkage clustering (UPGMC)")
+show(plotClustCentroid)
+```
+
+
+
+That's fine and dandy, but now we'd like to use these clusters. Up to you to use cutree to get 4 clusters that were clustered using average linkage and plotting them. Then, try 8 clusters and plot those. Finally, try it on single linkage data with 4 clusters.
+
+```{r}
+
+#####
+# Answer
+#####
+clustersAvgLinkage = cutree(avgCluster, k = 4)
+ggplot(data = dataHierarchical %>% mutate(clusterUPGMA = as.factor(clustersAvgLinkage)),
+       aes(x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = clusterUPGMA)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle(paste0("UPGMA clusters for k = ", 4 ))
+
+clustersAvgLinkageEight = cutree(avgCluster, k = 8)
+ggplot(data = dataHierarchical %>% mutate(clusterUPGMA = as.factor(clustersAvgLinkageEight)),
+       aes(x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = clusterUPGMA)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle(paste0("UPGMA clusters for k = ", 8 ))
+
+clustersSingLinkageFour = cutree(singCluster, k = 4)
+ggplot(data = dataHierarchical %>% mutate(clustSingLink = as.factor(clustersSingLinkageFour)),
+       aes(x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = clustSingLink)) +
+  geom_point() +
+  theme_bw() +
+  ggtitle(paste0("Single linkage clusters for k = ", 4 ))
+
+```
+Q8: What do you think of the single linkage clustering?
+
+#Answer: This depends on the random data generated. For one run, we got a cluster which was just one point. It happened because this point was so far from the others in the bottom right cluster that it only joined them as the last point. Meanwhile, the left two clusters have a sort of bridge between them that apparently allowed them to be more easily combined. More than likely though, on this simple scenario in your case, single linkage worked fine.
+
