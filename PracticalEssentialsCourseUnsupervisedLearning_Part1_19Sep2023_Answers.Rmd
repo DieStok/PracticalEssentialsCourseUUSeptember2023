@@ -94,6 +94,8 @@ plotsAndAnimations$plots[[4]]
 ```{r}
 #animations --> change the number to see a different one
 plotsAndAnimations$animations[[2]]
+#if you don't see the animation but just a list of files, make sure gifski is installed, and try uncommenting and running the below:
+#animate(plotsAndAnimations$animations[[2]], renderer = gifski_renderer())
 ```
 
 Q1: Look at the clusters produced. How many get, or almost get, the 'real' clustering that produced the data?
