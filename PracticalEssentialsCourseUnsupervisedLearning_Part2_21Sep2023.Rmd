@@ -252,6 +252,8 @@ noGeneFive      = addedNoiseData %>% select(-contains("Gene 5"))
 
 #remember that the data is in
 dataforClustering
+#you start from that, and add noisy dimensions, do pca and clustering and plotting, etc.
+
 
 #######################################
 ###
