@@ -49,6 +49,8 @@ We've talked during the lecture about problems in higher dimensions. You can clu
 
 Before we move into showing that outright, let's add noisy genes to our data, reduce the dimensions with PCA, and plot the 2D plot. Answer the questions under the code block.
 
+# NOTE: I use a color-blind friendly palette, but for those who are not colour blind it might not be optimally distinct. You can change the palette if you want, as it is used throughout!
+
 ```{r}
 #Here we will set the seed so things are equal, so you can discuss with your neighbours!
 set.seed(424242)
@@ -60,6 +62,11 @@ meanY = c(2, 7.9, 2.33, 9)
 sds   = c(0.8, 1.2, 1.124, 0.65)
 nPoints = rep(25, 4)
 clusterIdentity = c(rep("1", 25), rep("2",25), rep("3",25), rep("4",25))
+color_blind_friendly_colors = c("#a6cee3",'#1f78b4','#b2df8a','#33a02c')
+
+##
+## NOTE: if you are not colour blind you might like to change this palette to different values. See here: https://colorbrewer2.org/#type=qualitative&scheme=Dark2&n=4 
+##
 
 xValues = purrr::pmap(list(nPoints, meanX, sds), rnorm)
 yValues = purrr::pmap(list(nPoints, meanY, sds), rnorm)
@@ -71,14 +78,16 @@ dataforClustering = as_tibble(list("Gene 1 Expression" = unlist(xValues),
 
 #plot of original data
 ggplot(data = dataforClustering, aes_string(x = "`Gene 1 Expression`", y = "`Gene 2 Expression`", colour = "`True Cluster`")) + geom_point(size = 3) +
-  theme_bw() + ggtitle("Original data with true clusters")
+  theme_bw() + ggtitle("Original data with true clusters") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 
 #just the 2D data
 pca2DData = prcomp(dataforClustering %>% select(-"True Cluster"), center = TRUE, scale. = TRUE)
 
 #plot it
-ggbiplot(pca2DData, groups = dataforClustering$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() + ggtitle("PCA on original 2D data")
+ggbiplot(pca2DData, groups = dataforClustering$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() + ggtitle("PCA on original 2D data") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 #add noise to our data
 dataWithNoise = dataforClustering
@@ -90,7 +99,8 @@ pca3DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, sca
 #plot data
 ggbiplot(pca3DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
   theme_bw() +
-  ggtitle("PCA of data with one noisy gene added")
+  ggtitle("PCA of data with one noisy gene added") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 
 #add another dimension with noise and do this again
@@ -100,7 +110,8 @@ pca4DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, sca
 
 ggbiplot(pca4DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
   theme_bw() +
-  ggtitle("PCA of data with two noisy genes added")
+  ggtitle("PCA of data with two noisy genes added") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 #Once more because it's cool
 dataWithNoise[["Gene 5 Expression"]] = rnorm(nrow(dataWithNoise), 0, 2)
@@ -109,7 +120,8 @@ pca5DData = prcomp(dataWithNoise %>% select(-"True Cluster"), center = TRUE, sca
 
 ggbiplot(pca5DData, groups = dataWithNoise$`True Cluster`, varname.adjust = 1.1, varname.abbrev = TRUE) +
   theme_bw() +
-  ggtitle("PCA of data with three noisy genes added")
+  ggtitle("PCA of data with three noisy genes added") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 ```
 
@@ -159,14 +171,16 @@ ggplot(dataforClustering %>% mutate(kMeansCluster = as.factor(kMeans2D$cluster))
        aes( x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = `True Cluster`)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("Actual clusters")
+  ggtitle("Actual clusters") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 #plot 2D plot with k-means clusters
 ggplot(dataforClustering %>% mutate(kMeansCluster = as.factor(kMeans2D$cluster)),
        aes( x = `Gene 1 Expression`, y = `Gene 2 Expression`, colour = kMeansCluster)) +
   geom_point() + 
   theme_bw() +
-  ggtitle("K-means clusters")
+  ggtitle("K-means clusters") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 
 #plot PCA plot with actual clusters
@@ -175,7 +189,8 @@ ggbiplot(pca2DData, groups = as.factor(dataforClustering$`True Cluster`), varnam
 
 #plot PCA plot with k-means cluster
 ggbiplot(pca2DData, groups = as.factor(kMeans2D$cluster), varname.adjust = 1.1, varname.abbrev = TRUE) + theme_bw() +
-  ggtitle("K-means clusters in PCA projection")
+  ggtitle("K-means clusters in PCA projection") +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 
 #################################################
@@ -211,13 +226,15 @@ for (i in seq_along(keepUntil)) {
   #plot PCA plot with actual clusters
   realClusterPlot = ggbiplot(listPCAResults[[as.character(keepUntil[i])]], groups = as.factor(dataforClustering$`True Cluster`), varname.adjust = 1.1, varname.abbrev = TRUE) +
     theme_bw() +
-  ggtitle(paste0("Actual clusters PCA ", keepUntil[i], "D data"))
+  ggtitle(paste0("Actual clusters PCA ", keepUntil[i], "D data")) +
+  scale_colour_manual(values = color_blind_friendly_colors)
 
 #plot PCA plot with k-means cluster
   kMeansPlot = ggbiplot(listPCAResults[[as.character(keepUntil[i])]],
                                   groups = factor(kMeansND$cluster, levels = c(1,2,3,4)), varname.adjust = 1.1, varname.abbrev = TRUE) +
     theme_bw() +
-  ggtitle(paste0("K-means clusters PCA ", keepUntil[i], "D data"))
+  ggtitle(paste0("K-means clusters PCA ", keepUntil[i], "D data")) +
+  scale_colour_manual(values = color_blind_friendly_colors)
   show(realClusterPlot)
   show(kMeansPlot)
   
@@ -311,11 +328,13 @@ for (i in seq_along(noiseDimsToAdd)) {
   #make plots
   plotTrueCluster   = ggbiplot(pcaThisData, groups = as.factor(dataforClustering$`True Cluster`), varname.adjust = 1.1, varname.abbrev = TRUE, var.axes = ifelse(noiseDimsToAdd[i]<100, TRUE, FALSE)) +
     theme_bw() +
-  ggtitle(paste0("Actual clusters PCA with ", noiseDimsToAdd[i], " noise dimensions"))
+  ggtitle(paste0("Actual clusters PCA with ", noiseDimsToAdd[i], " noise dimensions")) +
+  scale_colour_manual(values = color_blind_friendly_colors)
   
   plotKMeansCluster = ggbiplot(pcaThisData, groups = as.factor(kMeansThisData$cluster), varname.adjust = 1.1, varname.abbrev = TRUE, var.axes = ifelse(noiseDimsToAdd[i]<100, TRUE, FALSE)) +
     theme_bw() +
-  ggtitle(paste0("K-means clusters PCA with ", noiseDimsToAdd[i], " noise dimensions"))
+  ggtitle(paste0("K-means clusters PCA with ", noiseDimsToAdd[i], " noise dimensions")) +
+  scale_colour_manual(values = color_blind_friendly_colors)
   
   plotList[[i]] = list(trueSignalClusters = plotTrueCluster,
                        kMeansClusters     = plotKMeansCluster)
