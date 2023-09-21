@@ -511,7 +511,6 @@ umapMNISTForPlotting = umapMNIST %>%
 ggplot(umapMNISTForPlotting, aes(x = x, y = y, colour = as.factor(label))) +
   geom_point(alpha = 1) +
   theme_bw()
-
 ```
 
 

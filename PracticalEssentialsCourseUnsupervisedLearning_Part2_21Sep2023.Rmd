@@ -363,7 +363,7 @@ Q5: What can you say about the vicinity of, say, 1s to 7s? What digit cluster is
 #Answer: 
 
 
-Finally, let's have a look at UMAP. First, watch this short introduction to the idea of UMAP: https://www.youtube.com/watch?v=6BPl81wGGP8 . I trust you know the drill. Run UMAP and plot the results. Be sure to read a little bit of https://umap-learn.readthedocs.io/en/latest/ to understand the basic parameters. The function call is umap()
+Finally, let's have a look at UMAP. First, watch this short introduction to the idea of UMAP: https://www.youtube.com/watch?v=6BPl81wGGP8. Then watch the StatQuest for some more detail: https://www.youtube.com/watch?v=eN0wFzBA4Sc. Then scan through https://pair-code.github.io/understanding-umap/ for some more details. I trust you know the drill. Run UMAP and plot the results. Be sure to read a little bit of https://umap-learn.readthedocs.io/en/latest/ to understand the basic parameters. The function call is umap()
 
 ```{r}
 
@@ -388,6 +388,7 @@ Q8: Why are UMAP and t-SNE so much better at getting the data into visually plea
 #Answer: 
 
 
+If you want to know even more UMAP details, see here: https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668 .
 So far, so good. The takeaway is that manifold methods such as t-SNE and UMAP can find non-linear structures in the data, structures that might allow you to separate complex data such as digits, but also cell types from different tissues with different gene expressions, much better than linear methods like PCA. Often, preprocessing is still done with PCA. The material discussed so far is the brunt of what you need to know: clustering and how it works, and dimension reduction methods and how they work.
 
 ########################################
